@@ -3,20 +3,31 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>dither-cam // stage 1</title>
+  <title>riddler.exe</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main>
-    <h1>dither-cam</h1>
-    <p class="status" id="status">initialising…</p>
+  <video id="video" autoplay playsinline muted hidden></video>
+  <canvas id="canvas" width="640" height="480"></canvas>
+  <div id="crt"></div>
 
-    <!-- The video is the source. It's hidden because the canvas is what we display. -->
-    <video id="video" autoplay playsinline muted hidden></video>
+  <div class="overlay">
+    <h1>riddler.exe</h1>
+    <p id="status"></p>
+  </div>
 
-    <!-- The canvas is what the user actually sees. -->
-    <canvas id="canvas" width="640" height="480"></canvas>
-  </main>
+  <div id="controls">
+    <label>
+      <span>pixel size — <span id="pixel-val">1</span></span>
+      <input type="range" id="pixel-size" min="1" max="12" value="1" step="1" />
+    </label>
+    <label>
+      <span>contrast — <span id="contrast-val">0</span></span>
+      <input type="range" id="contrast-input" min="-100" max="100" value="0" step="1" />
+    </label>
+  </div>
+
+  <div id="terminal"></div>
 
   <script src="script.js"></script>
 </body>
