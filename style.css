@@ -37,8 +37,8 @@ h1 {
 
 canvas {
   border: 1px solid #00ff66;
-  /* image-rendering: pixelated keeps things crisp when we scale up later */
   image-rendering: pixelated;
   max-width: 100%;
   height: auto;
+  transform: scaleX(-1);
 }
