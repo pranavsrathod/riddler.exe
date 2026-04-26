@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>dither-cam // stage 1</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main>
+    <h1>dither-cam</h1>
+    <p class="status" id="status">initialising…</p>
+
+    <!-- The video is the source. It's hidden because the canvas is what we display. -->
+    <video id="video" autoplay playsinline muted hidden></video>
+
+    <!-- The canvas is what the user actually sees. -->
+    <canvas id="canvas" width="640" height="480"></canvas>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
