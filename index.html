@@ -17,11 +17,21 @@
   </div>
 
   <div id="controls">
+    <div id="palette-buttons">
+      <button class="palette-btn active" data-palette="green"  style="--swatch: #00ff66;"></button>
+      <button class="palette-btn"        data-palette="purple" style="--swatch: #b450ff;"></button>
+      <button class="palette-btn"        data-palette="amber"  style="--swatch: #ffb000;"></button>
+      <button class="palette-btn"        data-palette="mono"   style="--swatch: #f0f0f0;"></button>
+    </div>
     <div id="mode-buttons">
       <button class="mode-btn active" data-mode="bayer">bayer</button>
       <button class="mode-btn" data-mode="floyd-steinberg">f-s</button>
       <button class="mode-btn" data-mode="atkinson">atkinson</button>
       <button class="mode-btn" data-mode="halftone">halftone</button>
+    </div>
+    <div id="glitch-controls">
+      <button class="glitch-btn" id="glitch-toggle" data-active="false">glitch: off</button>
+      <button class="glitch-btn" id="glitch-trigger">⚡ burst</button>
     </div>
     <label>
       <span>pixel size — <span id="pixel-val">1</span></span>
