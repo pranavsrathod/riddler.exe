@@ -16,6 +16,7 @@ const LIGHT = [ 0, 255, 102];
 
 let pixelSize = 1;
 let contrast  = -50;
+let mode      = 'bayer';
 
 // ── ripple state ─────────────────────────────────────────────────────────────
 
@@ -144,11 +145,9 @@ function warp(source) {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
 
-      // ambient
       const ambDx = Math.sin((x * 0.015) + time * 0.8) * 0.6;
       const ambDy = Math.cos((y * 0.015) + time * 0.7) * 0.6;
 
-      // hover trail
       let hoverDx = 0, hoverDy = 0;
       for (const entry of mouseTrail) {
         const edx = x - entry.x;
@@ -163,7 +162,6 @@ function warp(source) {
         }
       }
 
-      // click ripples
       let rippleDx = 0, rippleDy = 0;
       for (const ripple of ripples) {
         const rdx  = x - ripple.x;
@@ -204,28 +202,174 @@ function warp(source) {
   return output;
 }
 
-function dither(imageData) {
-  const { data, width, height } = imageData;
+// ── dithering ────────────────────────────────────────────────────────────────
 
+function dither(imageData) {
+  switch (mode) {
+    case 'bayer':           ditherBayer(imageData);          break;
+    case 'floyd-steinberg': ditherFloydSteinberg(imageData); break;
+    case 'atkinson':        ditherAtkinson(imageData);       break;
+    case 'halftone':        ditherHalftone(imageData);       break;
+  }
+}
+
+function fillBlock(data, bx, by, width, height, r, g, b) {
+  for (let dy = 0; dy < pixelSize && by + dy < height; dy++) {
+    for (let dx = 0; dx < pixelSize && bx + dx < width; dx++) {
+      const j = ((by + dy) * width + (bx + dx)) * 4;
+      data[j] = r; data[j+1] = g; data[j+2] = b;
+    }
+  }
+}
+
+function ditherBayer(imageData) {
+  const { data, width, height } = imageData;
   for (let by = 0; by < height; by += pixelSize) {
     for (let bx = 0; bx < width; bx += pixelSize) {
       const sx = Math.min(bx + Math.floor(pixelSize / 2), width - 1);
       const sy = Math.min(by + Math.floor(pixelSize / 2), height - 1);
       const i  = (sy * width + sx) * 4;
-
       const gray      = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
       const threshold = (BAYER4[(by / pixelSize) % 4][(bx / pixelSize) % 4] / 16) * 255;
       const [r, g, b] = (gray + contrast) > threshold ? LIGHT : DARK;
+      fillBlock(data, bx, by, width, height, r, g, b);
+    }
+  }
+}
 
-      for (let dy = 0; dy < pixelSize && by + dy < height; dy++) {
-        for (let dx = 0; dx < pixelSize && bx + dx < width; dx++) {
-          const j = ((by + dy) * width + (bx + dx)) * 4;
-          data[j] = r; data[j+1] = g; data[j+2] = b;
-        }
+function ditherFloydSteinberg(imageData) {
+  const { data, width, height } = imageData;
+
+  const gray = new Float32Array(width * height);
+  for (let y = 0; y < height; y += pixelSize) {
+    for (let x = 0; x < width; x += pixelSize) {
+      const sx = Math.min(x + Math.floor(pixelSize / 2), width - 1);
+      const sy = Math.min(y + Math.floor(pixelSize / 2), height - 1);
+      const i  = (sy * width + sx) * 4;
+      gray[y * width + x] = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2] + contrast;
+    }
+  }
+
+  for (let y = 0; y < height; y += pixelSize) {
+    for (let x = 0; x < width; x += pixelSize) {
+      const idx    = y * width + x;
+      const old    = gray[idx];
+      const newVal = old > 127 ? 255 : 0;
+      gray[idx]    = newVal;
+      const err    = old - newVal;
+      const xR     = x + pixelSize;
+      const yD     = y + pixelSize;
+      const xL     = x - pixelSize;
+
+      if (xR < width)                   gray[y  * width + xR] += err * 7/16;
+      if (xL >= 0 && yD < height)       gray[yD * width + xL] += err * 3/16;
+      if (yD < height)                  gray[yD * width + x ] += err * 5/16;
+      if (xR < width && yD < height)    gray[yD * width + xR] += err * 1/16;
+    }
+  }
+
+  for (let y = 0; y < height; y += pixelSize) {
+    for (let x = 0; x < width; x += pixelSize) {
+      const [r, g, b] = gray[y * width + x] >= 128 ? LIGHT : DARK;
+      fillBlock(data, x, y, width, height, r, g, b);
+    }
+  }
+}
+
+function ditherAtkinson(imageData) {
+  const { data, width, height } = imageData;
+
+  const gray = new Float32Array(width * height);
+  for (let y = 0; y < height; y += pixelSize) {
+    for (let x = 0; x < width; x += pixelSize) {
+      const sx = Math.min(x + Math.floor(pixelSize / 2), width - 1);
+      const sy = Math.min(y + Math.floor(pixelSize / 2), height - 1);
+      const i  = (sy * width + sx) * 4;
+      gray[y * width + x] = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2] + contrast;
+    }
+  }
+
+  for (let y = 0; y < height; y += pixelSize) {
+    for (let x = 0; x < width; x += pixelSize) {
+      const idx      = y * width + x;
+      const old      = gray[idx];
+      const newVal   = old > 127 ? 255 : 0;
+      gray[idx]      = newVal;
+      const errShare = (old - newVal) / 8;
+      const xR1 = x + pixelSize;
+      const xR2 = x + 2 * pixelSize;
+      const xL  = x - pixelSize;
+      const yD1 = y + pixelSize;
+      const yD2 = y + 2 * pixelSize;
+
+      if (xR1 < width)                  gray[y   * width + xR1] += errShare;
+      if (xR2 < width)                  gray[y   * width + xR2] += errShare;
+      if (xL >= 0 && yD1 < height)      gray[yD1 * width + xL]  += errShare;
+      if (yD1 < height)                 gray[yD1 * width + x]   += errShare;
+      if (xR1 < width && yD1 < height)  gray[yD1 * width + xR1] += errShare;
+      if (yD2 < height)                 gray[yD2 * width + x]   += errShare;
+    }
+  }
+
+  for (let y = 0; y < height; y += pixelSize) {
+    for (let x = 0; x < width; x += pixelSize) {
+      const [r, g, b] = gray[y * width + x] >= 128 ? LIGHT : DARK;
+      fillBlock(data, x, y, width, height, r, g, b);
+    }
+  }
+}
+
+function drawCircle(data, width, height, cx, cy, radius, color) {
+  const r2 = radius * radius;
+  const x0 = Math.max(0, Math.floor(cx - radius));
+  const x1 = Math.min(width  - 1, Math.ceil(cx + radius));
+  const y0 = Math.max(0, Math.floor(cy - radius));
+  const y1 = Math.min(height - 1, Math.ceil(cy + radius));
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const dx = x - cx, dy = y - cy;
+      if (dx * dx + dy * dy <= r2) {
+        const i = (y * width + x) * 4;
+        data[i] = color[0]; data[i+1] = color[1]; data[i+2] = color[2];
       }
     }
   }
 }
+
+function ditherHalftone(imageData) {
+  const { data, width, height } = imageData;
+  const cell = Math.max(pixelSize, 4);
+  const cols = Math.ceil(width  / cell);
+  const rows = Math.ceil(height / cell);
+
+  // Pass 1: collect brightness before we paint over anything
+  const brightness = new Float32Array(rows * cols);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const sx = Math.min(col * cell + (cell >> 1), width  - 1);
+      const sy = Math.min(row * cell + (cell >> 1), height - 1);
+      const i  = (sy * width + sx) * 4;
+      brightness[row * cols + col] = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+    }
+  }
+
+  // Pass 2: fill canvas dark
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = DARK[0]; data[i+1] = DARK[1]; data[i+2] = DARK[2]; data[i+3] = 255;
+  }
+
+  // Pass 3: place dots — darker cell = larger dot
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const lum      = brightness[row * cols + col];
+      const adjusted = Math.max(0, Math.min(255, 255 - lum + contrast));
+      const radius   = (adjusted / 255) * (cell / 2);
+      drawCircle(data, width, height, col * cell + cell / 2, row * cell + cell / 2, radius, LIGHT);
+    }
+  }
+}
+
+// ── main loop ─────────────────────────────────────────────────────────────────
 
 function loop() {
   const now = performance.now();
@@ -257,7 +401,15 @@ document.getElementById('pixel-size').addEventListener('input', e => {
 
 document.getElementById('contrast-input').addEventListener('input', e => {
   contrast = Number(e.target.value) - 50;
-  document.getElementById('contrast-val').textContent = contrast;
+  document.getElementById('contrast-val').textContent = Number(e.target.value);
+});
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    mode = btn.dataset.mode;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
 });
 
 // ── mouse / ripple input ──────────────────────────────────────────────────────
@@ -268,7 +420,7 @@ canvas.addEventListener('mousemove', (e) => {
   const scaleY = canvas.height / rect.height;
   const cx     = (e.clientX - rect.left) * scaleX;
   const cy     = (e.clientY - rect.top)  * scaleY;
-  const mx     = canvas.width - cx; // mirror to match CSS scaleX(-1)
+  const mx     = canvas.width - cx;
   mouseTrail.push({ x: mx, y: cy, age: 0 });
 });
 

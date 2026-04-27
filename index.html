@@ -17,6 +17,12 @@
   </div>
 
   <div id="controls">
+    <div id="mode-buttons">
+      <button class="mode-btn active" data-mode="bayer">bayer</button>
+      <button class="mode-btn" data-mode="floyd-steinberg">f-s</button>
+      <button class="mode-btn" data-mode="atkinson">atkinson</button>
+      <button class="mode-btn" data-mode="halftone">halftone</button>
+    </div>
     <label>
       <span>pixel size — <span id="pixel-val">1</span></span>
       <input type="range" id="pixel-size" min="1" max="12" value="1" step="1" />
