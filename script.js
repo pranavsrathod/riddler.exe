@@ -17,6 +17,13 @@ const LIGHT = [ 0, 255, 102];
 let pixelSize = 1;
 let contrast  = 0;
 
+// ── ripple state ─────────────────────────────────────────────────────────────
+
+let mouseTrail = [];
+const ripples  = [];
+let time       = 0;
+let lastTime   = performance.now();
+
 // ── utilities ────────────────────────────────────────────────────────────────
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -125,6 +132,78 @@ async function startWithStream(stream) {
   loop();
 }
 
+function warp(source) {
+  const { data: src, width, height } = source;
+  const output = new ImageData(width, height);
+  const dst = output.data;
+  const hoverR = 60;
+  const hoverR2 = hoverR * hoverR;
+  const speed = 280;
+  const ringWidth = 25;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+
+      // ambient
+      const ambDx = Math.sin((x * 0.015) + time * 0.8) * 0.6;
+      const ambDy = Math.cos((y * 0.015) + time * 0.7) * 0.6;
+
+      // hover trail
+      let hoverDx = 0, hoverDy = 0;
+      for (const entry of mouseTrail) {
+        const edx = x - entry.x;
+        const edy = y - entry.y;
+        const d2  = edx * edx + edy * edy;
+        if (d2 < hoverR2) {
+          const dist     = Math.sqrt(d2);
+          const strength = (1 - dist / hoverR) * (1 - entry.age / 0.8) * 1.5;
+          const angle    = Math.atan2(edy, edx);
+          hoverDx += Math.cos(angle) * strength;
+          hoverDy += Math.sin(angle) * strength;
+        }
+      }
+
+      // click ripples
+      let rippleDx = 0, rippleDy = 0;
+      for (const ripple of ripples) {
+        const rdx  = x - ripple.x;
+        const rdy  = y - ripple.y;
+        const dist = Math.hypot(rdx, rdy);
+        if (dist > ripple.age * speed + ringWidth) continue;
+
+        const angle = Math.atan2(rdy, rdx);
+        for (let i = 0; i < 4; i++) {
+          const echoAge = ripple.age - i * 0.12;
+          if (echoAge < 0) continue;
+          const distFromRing = Math.abs(dist - echoAge * speed);
+          if (distFromRing < ringWidth) {
+            const ringFalloff  = 1 - distFromRing / ringWidth;
+            const ageFalloff   = Math.max(0, 1 - ripple.age / 1.5);
+            const echoStrength = (1 / (1 + i * 0.8)) * 14;
+            const wave = Math.sin(distFromRing * 0.3) * ringFalloff * ageFalloff * echoStrength;
+            rippleDx += Math.cos(angle) * wave;
+            rippleDy += Math.sin(angle) * wave;
+          }
+        }
+      }
+
+      const totalDx = ambDx + hoverDx + rippleDx;
+      const totalDy = ambDy + hoverDy + rippleDy;
+      const srcX = Math.round(Math.max(0, Math.min(width  - 1, x + totalDx)));
+      const srcY = Math.round(Math.max(0, Math.min(height - 1, y + totalDy)));
+
+      const si = (srcY * width + srcX) * 4;
+      const di = (y    * width + x)    * 4;
+      dst[di]   = src[si];
+      dst[di+1] = src[si+1];
+      dst[di+2] = src[si+2];
+      dst[di+3] = src[si+3];
+    }
+  }
+
+  return output;
+}
+
 function dither(imageData) {
   const { data, width, height } = imageData;
 
@@ -149,12 +228,27 @@ function dither(imageData) {
 }
 
 function loop() {
+  const now = performance.now();
+  const dt  = (now - lastTime) / 1000;
+  lastTime  = now;
+  time     += dt;
+
+  mouseTrail = mouseTrail.filter(p => (p.age += dt) < 0.8);
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    ripples[i].age += dt;
+    if (ripples[i].age > 1.5) ripples.splice(i, 1);
+  }
+
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  dither(imageData);
-  ctx.putImageData(imageData, 0, 0);
+  const sourceData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const warped     = warp(sourceData);
+  dither(warped);
+  ctx.putImageData(warped, 0, 0);
+
   requestAnimationFrame(loop);
 }
+
+// ── controls ─────────────────────────────────────────────────────────────────
 
 document.getElementById('pixel-size').addEventListener('input', e => {
   pixelSize = Number(e.target.value);
@@ -164,6 +258,28 @@ document.getElementById('pixel-size').addEventListener('input', e => {
 document.getElementById('contrast-input').addEventListener('input', e => {
   contrast = Number(e.target.value);
   document.getElementById('contrast-val').textContent = contrast;
+});
+
+// ── mouse / ripple input ──────────────────────────────────────────────────────
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect   = canvas.getBoundingClientRect();
+  const scaleX = canvas.width  / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const cx     = (e.clientX - rect.left) * scaleX;
+  const cy     = (e.clientY - rect.top)  * scaleY;
+  const mx     = canvas.width - cx; // mirror to match CSS scaleX(-1)
+  mouseTrail.push({ x: mx, y: cy, age: 0 });
+});
+
+canvas.addEventListener('mousedown', (e) => {
+  const rect   = canvas.getBoundingClientRect();
+  const scaleX = canvas.width  / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const cx     = (e.clientX - rect.left) * scaleX;
+  const cy     = (e.clientY - rect.top)  * scaleY;
+  const mx     = canvas.width - cx;
+  ripples.push({ x: mx, y: cy, age: 0 });
 });
 
 boot();
