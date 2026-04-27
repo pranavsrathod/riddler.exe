@@ -15,7 +15,7 @@ const DARK  = [10,  10,  10];
 const LIGHT = [ 0, 255, 102];
 
 let pixelSize = 1;
-let contrast  = 0;
+let contrast  = -50;
 
 // ── ripple state ─────────────────────────────────────────────────────────────
 
@@ -256,7 +256,7 @@ document.getElementById('pixel-size').addEventListener('input', e => {
 });
 
 document.getElementById('contrast-input').addEventListener('input', e => {
-  contrast = Number(e.target.value);
+  contrast = Number(e.target.value) - 50;
   document.getElementById('contrast-val').textContent = contrast;
 });
 
