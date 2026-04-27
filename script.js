@@ -36,9 +36,9 @@ let lastTime   = performance.now();
 
 // ── glitch state ──────────────────────────────────────────────────────────────
 
-let glitchActive   = false;
-let glitchStrength = 0;
-let glitchTarget   = 0;
+let glitchActive      = false;
+let glitchStrength    = 0;
+let glitchTarget      = 0;
 let nextAmbientGlitch = 0;
 
 const glitchCanvas = document.createElement('canvas');
@@ -53,7 +53,6 @@ function triggerGlitch(intensity = 1, duration = 0.4) {
 
 function updateGlitch(dt) {
   glitchStrength += (glitchTarget - glitchStrength) * Math.min(1, dt * 8);
-
   if (glitchActive && performance.now() > nextAmbientGlitch) {
     triggerGlitch(0.3 + Math.random() * 0.4, 0.15 + Math.random() * 0.3);
     nextAmbientGlitch = performance.now() + 1500 + Math.random() * 4000;
@@ -63,7 +62,7 @@ function updateGlitch(dt) {
 function applyChannelMask(c, channel) {
   const w = c.canvas.width, h = c.canvas.height;
   const img = c.getImageData(0, 0, w, h);
-  const d = img.data;
+  const d   = img.data;
   for (let i = 0; i < d.length; i += 4) {
     if (channel !== 'r') d[i]   = 0;
     if (channel !== 'g') d[i+1] = 0;
@@ -74,7 +73,6 @@ function applyChannelMask(c, channel) {
 
 function drawGlitchOverlay() {
   const offset = Math.floor(glitchStrength * 18);
-
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
   ctx.globalAlpha = glitchStrength * 0.5;
@@ -118,16 +116,33 @@ function addLine(text) {
   return line;
 }
 
-function waitForKey(validKeys) {
+// Accepts keyboard input and optional on-screen buttons for touch devices.
+// btnMap: { 'y': 'button-element-id', 'n': 'button-element-id' }
+function waitForKey(validKeys, btnMap = {}) {
   return new Promise(resolve => {
-    function handler(e) {
+    const registered = [];
+
+    function finish(key) {
+      document.removeEventListener('keydown', kbHandler);
+      registered.forEach(({ el, fn }) => el.removeEventListener('click', fn));
+      resolve(key);
+    }
+
+    function kbHandler(e) {
       const key = e.key.toLowerCase();
-      if (validKeys.includes(key)) {
-        document.removeEventListener('keydown', handler);
-        resolve(key);
+      if (validKeys.includes(key)) finish(key);
+    }
+
+    document.addEventListener('keydown', kbHandler);
+
+    for (const [key, id] of Object.entries(btnMap)) {
+      const el = document.getElementById(id);
+      if (el) {
+        const fn = () => finish(key);
+        el.addEventListener('click', fn);
+        registered.push({ el, fn });
       }
     }
-    document.addEventListener('keydown', handler);
   });
 }
 
@@ -135,7 +150,6 @@ async function animateLoadingBar() {
   const line = document.createElement('p');
   terminal.appendChild(line);
   const WIDTH = 20;
-
   await new Promise(resolve => {
     let progress = 0;
     const id = setInterval(() => {
@@ -154,7 +168,14 @@ async function boot() {
 
   await typeOut('> are you ready to enter the matrix? (y/n)');
 
-  const answer = await waitForKey(['y', 'n']);
+  // On-screen buttons for touch devices — keyboard still works on desktop
+  const bootBtns = document.createElement('div');
+  bootBtns.id = 'boot-buttons';
+  bootBtns.innerHTML = '<button id="boot-y">[ y ]</button><button id="boot-n">[ n ]</button>';
+  terminal.appendChild(bootBtns);
+
+  const answer = await waitForKey(['y', 'n'], { y: 'boot-y', n: 'boot-n' });
+  bootBtns.remove();
   addLine(`> ${answer}`);
 
   if (answer === 'n') {
@@ -201,17 +222,17 @@ async function startWithStream(stream) {
   video.srcObject = stream;
   await new Promise(resolve => { video.onloadedmetadata = () => resolve(); });
   await video.play();
-  statusEl.textContent = 'streaming · stage 2';
+  statusEl.textContent = 'streaming';
   loop();
 }
 
 function warp(source) {
   const { data: src, width, height } = source;
-  const output = new ImageData(width, height);
-  const dst = output.data;
-  const hoverR  = 60;
-  const hoverR2 = hoverR * hoverR;
-  const speed    = 280;
+  const output    = new ImageData(width, height);
+  const dst       = output.data;
+  const hoverR    = 60;
+  const hoverR2   = hoverR * hoverR;
+  const speed     = 280;
   const ringWidth = 25;
 
   for (let y = 0; y < height; y++) {
@@ -508,30 +529,51 @@ document.getElementById('glitch-trigger').addEventListener('click', () => {
   triggerGlitch(0.9, 0.5);
 });
 
+// Controls toggle for touch devices
+document.getElementById('ctrl-toggle').addEventListener('click', () => {
+  document.getElementById('controls').classList.toggle('open');
+});
+
 document.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'g') triggerGlitch(0.9, 0.5);
 });
 
-// ── mouse / ripple input ──────────────────────────────────────────────────────
+// ── pointer / touch input ─────────────────────────────────────────────────────
 
-canvas.addEventListener('mousemove', (e) => {
+function canvasCoords(clientX, clientY) {
   const rect   = canvas.getBoundingClientRect();
   const scaleX = canvas.width  / rect.width;
   const scaleY = canvas.height / rect.height;
-  const cx     = (e.clientX - rect.left) * scaleX;
-  const cy     = (e.clientY - rect.top)  * scaleY;
-  const mx     = canvas.width - cx;
-  mouseTrail.push({ x: mx, y: cy, age: 0 });
+  return {
+    x: canvas.width - (clientX - rect.left) * scaleX, // mirror to match CSS scaleX(-1)
+    y: (clientY - rect.top) * scaleY,
+  };
+}
+
+canvas.addEventListener('mousemove', (e) => {
+  const { x, y } = canvasCoords(e.clientX, e.clientY);
+  mouseTrail.push({ x, y, age: 0 });
 });
 
 canvas.addEventListener('mousedown', (e) => {
-  const rect   = canvas.getBoundingClientRect();
-  const scaleX = canvas.width  / rect.width;
-  const scaleY = canvas.height / rect.height;
-  const cx     = (e.clientX - rect.left) * scaleX;
-  const cy     = (e.clientY - rect.top)  * scaleY;
-  const mx     = canvas.width - cx;
-  ripples.push({ x: mx, y: cy, age: 0 });
+  const { x, y } = canvasCoords(e.clientX, e.clientY);
+  ripples.push({ x, y, age: 0 });
 });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    const { x, y } = canvasCoords(touch.clientX, touch.clientY);
+    mouseTrail.push({ x, y, age: 0 });
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    const { x, y } = canvasCoords(touch.clientX, touch.clientY);
+    ripples.push({ x, y, age: 0 });
+  }
+}, { passive: false });
 
 boot();

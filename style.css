@@ -222,6 +222,118 @@ h1 {
   cursor: pointer;
 }
 
+#boot-buttons {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+#boot-buttons button {
+  background: transparent;
+  border: 1px solid rgba(0, 255, 102, 0.5);
+  color: #00ff66;
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.5rem 1.5rem;
+  cursor: pointer;
+  letter-spacing: 0.1em;
+  min-width: 80px;
+  min-height: 48px;
+}
+
+#boot-buttons button:hover,
+#boot-buttons button:active {
+  background: rgba(0, 255, 102, 0.1);
+}
+
+#ctrl-toggle {
+  display: none;
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 11;
+  width: 2.8rem;
+  height: 2.8rem;
+  background: rgba(10, 10, 10, 0.85);
+  border: 1px solid rgba(0, 255, 102, 0.3);
+  color: var(--accent);
+  font-size: 1.1rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Touch devices: show toggle button, controls tap-to-open */
+@media (hover: none) {
+  #ctrl-toggle {
+    display: flex;
+  }
+
+  #controls {
+    bottom: 5.5rem;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #controls.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  #controls:hover {
+    opacity: 0; /* disable desktop hover rule on touch */
+  }
+
+  #controls.open:hover {
+    opacity: 1;
+  }
+
+  /* Larger touch targets for sliders */
+  #controls input[type="range"] {
+    width: 100%;
+    height: 6px;
+  }
+
+  #controls input[type="range"]::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* Stack mode buttons more comfortably */
+  #mode-buttons {
+    gap: 0.5rem;
+  }
+
+  .mode-btn,
+  .glitch-btn {
+    padding: 0.5rem 0.7rem;
+    font-size: 0.75rem;
+    min-height: 40px;
+  }
+
+  .palette-btn {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+/* Narrow phones: shrink controls panel width */
+@media (max-width: 400px) {
+  #controls {
+    right: 0.75rem;
+    left: 0.75rem;
+    bottom: 5.5rem;
+  }
+
+  #ctrl-toggle {
+    right: 0.75rem;
+  }
+
+  #controls input[type="range"] {
+    width: 100%;
+  }
+}
+
 #terminal {
   position: fixed;
   inset: 0;
