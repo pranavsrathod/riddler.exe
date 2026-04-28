@@ -41,6 +41,34 @@ let glitchStrength    = 0;
 let glitchTarget      = 0;
 let nextAmbientGlitch = 0;
 
+// ── matrix state ──────────────────────────────────────────────────────────────
+
+const MATRIX_CHARS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789';
+let matrixColumns  = [];
+let matrixCharSize = 14;
+
+function initMatrixColumns() {
+  const cols = Math.floor(canvas.width / matrixCharSize);
+  matrixColumns = Array.from({ length: cols }, () => ({
+    y:           Math.random() * -canvas.height,
+    speed:       40  + Math.random() * 100,
+    trailLength: 6   + Math.floor(Math.random() * 16),
+    chars:       Array.from({ length: 24 }, () =>
+      MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)]),
+  }));
+}
+
+// ── ascii state ───────────────────────────────────────────────────────────────
+
+const CHAR_RAMPS = {
+  ascii:    " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$",
+  katakana: " ｰﾟ.｡･ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝﾞ",
+  symbols:  " .,~:;+=*<>cnxzMW%@&$#",
+};
+
+let asciiCharSet  = 'ascii';
+let asciiCharSize = 4;
+
 const glitchCanvas = document.createElement('canvas');
 glitchCanvas.width  = canvas.width;
 glitchCanvas.height = canvas.height;
@@ -462,6 +490,133 @@ function ditherHalftone(imageData) {
   }
 }
 
+function ditherMatrix(imageData, dt) {
+  const { data, width, height } = imageData;
+  const [lr, lg, lb] = palette.light;
+  const [dr, dg, db] = palette.dark;
+
+  ctx.fillStyle = `rgb(${dr},${dg},${db})`;
+  ctx.fillRect(0, 0, width, height);
+  ctx.font        = `bold ${matrixCharSize}px monospace`;
+  ctx.textAlign   = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (let ci = 0; ci < matrixColumns.length; ci++) {
+    const col = matrixColumns[ci];
+    col.y += col.speed * dt;
+
+    if (col.y > height + col.trailLength * matrixCharSize) {
+      col.y           = -(matrixCharSize * (1 + Math.floor(Math.random() * 8)));
+      col.speed       = 40  + Math.random() * 100;
+      col.trailLength = 6   + Math.floor(Math.random() * 16);
+    }
+
+    if (Math.random() < 0.05) {
+      col.chars[Math.floor(Math.random() * col.chars.length)] =
+        MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)];
+    }
+
+    const charCx = ci * matrixCharSize + matrixCharSize * 0.5;
+
+    for (let t = 0; t < col.trailLength; t++) {
+      const charY = col.y - t * matrixCharSize;
+      if (charY < 0 || charY > height) continue;
+
+      const sx  = Math.min(Math.max(0, Math.floor(charCx)), width  - 1);
+      const sy  = Math.min(Math.max(0, Math.floor(charY)),  height - 1);
+      const pi  = (sy * width + sx) * 4;
+      const lum = 0.299 * data[pi] + 0.587 * data[pi + 1] + 0.114 * data[pi + 2];
+
+      if (lum < 40) continue;
+
+      if (t === 0) {
+        ctx.globalAlpha = 1;
+        ctx.fillStyle   = '#ffffff';
+      } else {
+        ctx.globalAlpha = Math.pow(1 - t / col.trailLength, 1.5);
+        ctx.fillStyle   = `rgb(${lr},${lg},${lb})`;
+      }
+
+      ctx.fillText(col.chars[t % col.chars.length], charCx, charY);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function ditherAsciiRiddler(imageData) {
+  const { data, width, height } = imageData;
+
+  ctx.fillStyle = `rgb(${palette.dark[0]},${palette.dark[1]},${palette.dark[2]})`;
+  ctx.fillRect(0, 0, width, height);
+  ctx.font         = `${asciiCharSize}px "Courier New", monospace`;
+  ctx.textBaseline = 'top';
+
+  const cellW = asciiCharSize * 3;
+  const cellH = asciiCharSize;
+  const cols  = Math.ceil(width  / cellW);
+  const rows  = Math.ceil(height / cellH);
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const cx  = col * cellW;
+      const cy  = row * cellH;
+      const sx  = Math.min(width  - 1, Math.floor(cx + cellW / 2));
+      const sy  = Math.min(height - 1, Math.floor(cy + cellH / 2));
+      const pi  = (sy * width + sx) * 4;
+      const lum = 0.299 * data[pi] + 0.587 * data[pi + 1] + 0.114 * data[pi + 2];
+
+      const adjusted   = Math.max(0, Math.min(255, lum + contrast));
+      const brightness = adjusted / 255;
+      const renderProb = Math.pow(brightness, 1.4);
+
+      const hash      = ((col * 73856093) ^ (row * 19349663)) >>> 0;
+      const cellNoise = (hash % 1000) / 1000;
+      if (cellNoise > renderProb) continue;
+
+      const alpha = 0.4 + brightness * 0.6;
+      ctx.fillStyle = `rgba(${palette.light[0]},${palette.light[1]},${palette.light[2]},${alpha})`;
+      ctx.fillText('<?>', cx, cy);
+    }
+  }
+}
+
+function ditherAscii(imageData) {
+  if (asciiCharSet === 'riddler') return ditherAsciiRiddler(imageData);
+
+  const { data, width, height } = imageData;
+  const ramp    = CHAR_RAMPS[asciiCharSet];
+  const rampLen = ramp.length;
+  const cellW   = asciiCharSize;
+  const cellH   = asciiCharSize;
+
+  ctx.fillStyle = `rgb(${palette.dark[0]},${palette.dark[1]},${palette.dark[2]})`;
+  ctx.fillRect(0, 0, width, height);
+  ctx.font         = `${asciiCharSize}px "Courier New", monospace`;
+  ctx.textBaseline = 'top';
+  ctx.fillStyle    = `rgb(${palette.light[0]},${palette.light[1]},${palette.light[2]})`;
+
+  const cols = Math.ceil(width  / cellW);
+  const rows = Math.ceil(height / cellH);
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const cx = col * cellW;
+      const cy = row * cellH;
+      const sx = Math.min(width  - 1, Math.floor(cx + cellW / 2));
+      const sy = Math.min(height - 1, Math.floor(cy + cellH / 2));
+      const pi = (sy * width + sx) * 4;
+      const lum = 0.299 * data[pi] + 0.587 * data[pi + 1] + 0.114 * data[pi + 2];
+
+      const adjusted = Math.max(0, Math.min(255, lum + contrast));
+      const rampIdx  = Math.floor((adjusted / 255) * (rampLen - 1));
+      const char     = ramp[rampIdx];
+
+      if (char === ' ') continue;
+      ctx.fillText(char, cx, cy);
+    }
+  }
+}
+
 // ── main loop ─────────────────────────────────────────────────────────────────
 
 function loop() {
@@ -478,11 +633,16 @@ function loop() {
 
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   const sourceData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const warped     = warp(sourceData);
-  dither(warped);
-  ctx.putImageData(warped, 0, 0);
 
-  if (glitchStrength > 0.01) drawGlitchOverlay();
+  if (mode === 'matrix' || mode === 'ascii') {
+    if (mode === 'matrix') ditherMatrix(sourceData, dt);
+    else                   ditherAscii(sourceData);
+  } else {
+    const warped = warp(sourceData);
+    dither(warped);
+    ctx.putImageData(warped, 0, 0);
+    if (glitchStrength > 0.01) drawGlitchOverlay();
+  }
   updateGlitch(dt);
 
   requestAnimationFrame(loop);
@@ -493,6 +653,9 @@ function loop() {
 document.getElementById('pixel-size').addEventListener('input', e => {
   pixelSize = Number(e.target.value);
   document.getElementById('pixel-val').textContent = pixelSize;
+  matrixCharSize = Math.max(8, pixelSize * 4);
+  if (mode === 'matrix') initMatrixColumns();
+  asciiCharSize = Math.max(6, pixelSize * 2);
 });
 
 document.getElementById('contrast-input').addEventListener('input', e => {
@@ -515,7 +678,14 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
     mode = btn.dataset.mode;
     document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+    if (mode === 'matrix') initMatrixColumns();
+    document.getElementById('ascii-controls').style.display =
+      mode === 'ascii' ? 'block' : 'none';
   });
+});
+
+document.getElementById('ascii-charset').addEventListener('change', (e) => {
+  asciiCharSet = e.target.value;
 });
 
 document.getElementById('glitch-toggle').addEventListener('click', (e) => {

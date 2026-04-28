@@ -28,6 +28,19 @@
       <button class="mode-btn" data-mode="floyd-steinberg">f-s</button>
       <button class="mode-btn" data-mode="atkinson">atkinson</button>
       <button class="mode-btn" data-mode="halftone">halftone</button>
+      <button class="mode-btn" data-mode="matrix">matrix</button>
+      <button class="mode-btn" data-mode="ascii">ascii</button>
+    </div>
+    <div id="ascii-controls" style="display: none;">
+      <label style="display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.72rem;">
+        <span>charset</span>
+        <select id="ascii-charset">
+          <option value="ascii">classic ascii</option>
+          <option value="katakana">katakana</option>
+          <option value="riddler">riddler</option>
+          <option value="symbols">symbols</option>
+        </select>
+      </label>
     </div>
     <div id="glitch-controls">
       <button class="glitch-btn" id="glitch-toggle" data-active="false">glitch: off</button>
